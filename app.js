@@ -78,108 +78,132 @@ const corsOptions = {
 };
   
 app.use(cors(corsOptions));
-
 app.use(bodyParser.json());
 
 app.get("/", (req, res)=>{
     res.send("<h1>Server Running</h1>")
 })
 
+app.post("/createUser", async(req, res)=>{
+  const { name, username, password } = req.body;
+  const existingUser = await User.findOne({username: username});
+
+  if(existingUser){
+      res.status(404).send({ err: "User already registered. Please login." });
+  } else{
+      User.register({username: username, name: name}, password, function(err, user){
+        if (err) {
+          console.log(err);
+          res.sendStatus(500);
+        } else {
+          passport.authenticate("local")(req, res, function(){
+            res.status(200).send({userId: user._id});
+          });
+        }
+      });
+  }
+});
+
+app.post("/login", async (req, res)=>{
+  const existingUser = await User.findOne({username: req.body.username});
+
+  if(existingUser){
+    const user = new User({
+      username: req.body.username,
+      password: req.body.password
+    });
+
+    req.login(user, function(err){
+      if (err) {
+        console.log(err);
+        res.status(401).send({ err: err });
+      } else {
+        passport.authenticate("local")(req, res, function(){
+          res.status(200).send({userId: existingUser._id});
+        });
+      }
+    });
+  } else{
+      res.status(401).send({ err: "User is not registered. Please Sign Up." });
+  }
+})
+
+app.get("/getUser/:id", async(req, res)=>{
+  const user_id = req.params.id;
+
+  try{
+      const user = await User.findOne({_id: user_id});
+      res.status(200).send(user);
+  } catch(err){
+      console.log(err);
+      res.sendStatus(500);
+  }
+})
+
 app.get("/notes/:id", async (req, res)=>{
+  try{
     const user_id = req.params.id;
 
     const notes = await Note.find({user_id: user_id});
-    res.status(200).send({notes: notes});
+    res.status(200).send(notes);
+  } catch(err){
+    console.log(err);
+  }
 })
 
 app.post("/note", (req, res)=>{
     const { title, content, user_id } = req.body;
 
     const note = new Note({
-        title: title,
-        content: content,
-        user_id: user_id,
-        created_at: new Date().toLocaleDateString()
+      title: title,
+      content: content,
+      user_id: user_id,
+      created_at: new Date()
     })
+
     note.save();
     res.status(200).send(note);
+})
+
+app.get("/getNote/:id", async(req, res)=>{
+  try{
+    const id = req.params.id;
+    const note = await Note.findOne({_id: id});
+
+    res.status(200).send(note);
+  } catch(err){
+    console.log(err);
+    res.sendStatus(500);
+  }
+})
+
+app.post("/editNote", async(req, res)=>{
+  try{
+    const {id, title, content} = req.body;
+
+    const note = await Note.findOne({_id: id});
+    note.title = title;
+    note.content = content;
+    note.save();
+
+    res.status(200).send({user_id: note.user_id})
+  } catch(err){
+    console.log(err);
+    res.sendStatus(500);
+  }
 })
 
 app.post("/deleteNote/:id", async (req, res)=>{
     const note_id = req.params.id;
 
     try{
-        await Note.findByIdAndRemove(note_id);
-        res.status(200).send({isDeleted: true});
+      await Note.findByIdAndRemove(note_id);
+      res.status(200).send({isDeleted: true});
     } catch(err){
         console.log(err);
         res.sendStatus(500);
     }
 })
-
-app.get("/getUser/:id", async(req, res)=>{
-    const user_id = req.params.id;
-
-    try{
-        const user = await User.findOne({_id: user_id});
-        res.status(200).send(user);
-    } catch(err){
-        console.log(err);
-        res.sendStatus(500);
-    }
-})
-
-app.post("/createUser", async(req, res)=>{
-    const { name, username, password } = req.body;
-    const existingUser = await User.findOne({username: username});
-
-    if(existingUser){
-        res.status(404).send({ err: "User already registered. Please login." });
-    } else{
-        User.register({username: username, name: name}, password, function(err, user){
-          if (err) {
-            console.log(err);
-            
-          } else {
-            passport.authenticate("local")(req, res, function(){
-              res.status(200).send({userId: user._id});
-            });
-          }
-        });
-    }
-});
-
-app.post("/login", async (req, res)=>{
-    const existingUser = await User.findOne({username: req.body.username});
-
-    if(existingUser){
-      const user = new User({
-        username: req.body.username,
-        password: req.body.password
-      });
-
-      req.login(user, function(err){
-        if (err) {
-          console.log(err);
-          res.status(401).send({ err: err });
-        } else {
-          passport.authenticate("local")(req, res, function(){
-            res.status(200).send({userId: existingUser._id});
-          });
-        }
-      });
-    } else{
-        res.status(401).send({ err: "User is not registered. Please Sign Up." });
-    }
-})
-
-app.get("/keeper", function(req, res){
-    if (req.isAuthenticated()){
-      res.status(200).send({ isAuthenticated: true });
-    } else {
-        res.status(400).send({ isAuthenticated: false });
-    }
-  });
 
 app.listen(port, function(){
     console.log(`Server started at localhost ${port}`);
